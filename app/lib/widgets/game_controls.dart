@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Add this import for Clipboard
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../services/game_service.dart';
 import '../services/chess_engine_service.dart';
-import '../utils/fen_converter.dart'; // Add this import
+import '../utils/fen_converter.dart';
 import 'evaluation_bar.dart';
 
 class GameControls extends StatelessWidget {
   final GameService gameService;
   final ChessEngineService engineService;
   final bool engineAvailable;
+  final VoidCallback? onEngineMoveRequested;
 
   const GameControls({
     super.key,
     required this.gameService,
     required this.engineService,
     required this.engineAvailable,
+    this.onEngineMoveRequested,
   });
 
   @override
@@ -53,7 +55,7 @@ class GameControls extends StatelessWidget {
               ElevatedButton.icon(
                 onPressed: state.isEngineThinking || !engineAvailable
                     ? null
-                    : () => _requestEngineMove(context, state),
+                    : onEngineMoveRequested,
                 icon: const Icon(Icons.psychology),
                 label: const Text('Engine Move'),
                 style: ElevatedButton.styleFrom(
@@ -118,17 +120,6 @@ class GameControls extends StatelessWidget {
     return Colors.grey[700]!;
   }
 
-  void _requestEngineMove(BuildContext context, GameState state) async {
-    // This would be implemented with actual engine move calculation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Engine move feature coming soon'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  // Fixed: Added proper clipboard implementation
   void _copyFenToClipboard(BuildContext context, GameState state) {
     final fen = FenConverter.boardToFen(state);
     Clipboard.setData(ClipboardData(text: fen));

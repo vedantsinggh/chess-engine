@@ -7,6 +7,9 @@ import 'chess_engine_service.dart';
 
 class GameService {
   final MoveValidator _moveValidator = MoveValidator();
+  final ChessEngineService _engineService;
+  bool _engineBusy = false;
+  GameService(this._engineService);
 
   void handleSquareTap(GameState state, int row, int col) {
     if (state.isEngineThinking) return;
@@ -40,10 +43,33 @@ class GameService {
     _finalizeMove(state);
   }
 
-  void updateEvaluation(GameState state, ChessEngineService engineService) {
+  Future<void> updateEvaluation(
+    GameState state,
+    ChessEngineService engineService,
+  ) async {
     if (engineService.isAvailable) {
-      state.evaluation = engineService.evaluatePosition(state);
-      state.notifyListeners();
+      try {
+        final eval = await engineService.evaluatePosition(state);
+        state.evaluation = eval;
+        state.notifyListeners();
+      } catch (e) {
+        debugPrint('Evaluation update error: $e');
+      }
+    }
+  }
+
+  Future<String?> getEngineMove(
+    GameState state,
+    ChessEngineService engineService, {
+    Duration moveTime = const Duration(seconds: 1),
+  }) async {
+    if (!engineService.isAvailable) return null;
+
+    try {
+      return await engineService.getBestMove(state: state, moveTime: moveTime);
+    } catch (e) {
+      debugPrint('Get engine move error: $e');
+      return null;
     }
   }
 
@@ -171,6 +197,10 @@ class GameService {
     }
 
     state.notifyListeners();
+    if (state.currentMode == GameMode.engine) {
+      updateEvaluation(state, _engineService);
+    }
+    onMoveCompleted(state);
   }
 
   void _updateCastlingRights(
@@ -199,6 +229,86 @@ class GameService {
       if (fromR == 7 && fromC == 0) r.whiteQueenside = false;
       if (fromR == 0 && fromC == 7) r.blackKingside = false;
       if (fromR == 0 && fromC == 0) r.blackQueenside = false;
+    }
+  }
+
+  void onMoveCompleted(GameState state) {
+    // Only run in bot mode
+    if (state.currentMode != GameMode.offline) return;
+
+    // Engine plays black (based on your current design)
+    if (state.currentTurn != PieceColor.black) return;
+
+    // Do not trigger if game ended
+    if (state.status == GameStatus.checkmate) return;
+    if (state.status == GameStatus.stalemate) return;
+
+    _requestEngineMoveInternal(state);
+  }
+
+  Future<void> _requestEngineMoveInternal(GameState state) async {
+    if (_engineBusy) return;
+
+    _engineBusy = true;
+    state.isEngineThinking = true;
+    state.status = GameStatus.engineThinking;
+    state.notifyListeners();
+
+    try {
+      final move = await getEngineMove(state, _engineService);
+
+      if (move != null) {
+        _applyEngineMove(state, move);
+      }
+    } catch (_) {
+      // ignore or log
+    } finally {
+      state.isEngineThinking = false;
+      _engineBusy = false;
+      state.notifyListeners();
+    }
+  }
+
+  void _applyEngineMove(GameState state, String uciMove) {
+    if (uciMove.length < 4) return;
+
+    final fromCol = uciMove[0].codeUnitAt(0) - 'a'.codeUnitAt(0);
+    final fromRow = 8 - int.parse(uciMove[1]);
+    final toCol = uciMove[2].codeUnitAt(0) - 'a'.codeUnitAt(0);
+    final toRow = 8 - int.parse(uciMove[3]);
+
+    _makeMoveDirect(state, fromRow, fromCol, toRow, toCol);
+
+    if (uciMove.length >= 5) {
+      final pieceType = _promotionCharToPieceType(uciMove[4]);
+      if (pieceType != null && state.pendingPromotion != null) {
+        completePromotion(state, pieceType);
+      }
+    }
+  }
+
+  void _makeMoveDirect(
+    GameState state,
+    int fromR,
+    int fromC,
+    int toR,
+    int toC,
+  ) {
+    _applyMove(state, fromR, fromC, toR, toC);
+  }
+
+  PieceType? _promotionCharToPieceType(String char) {
+    switch (char.toLowerCase()) {
+      case 'q':
+        return PieceType.queen;
+      case 'r':
+        return PieceType.rook;
+      case 'b':
+        return PieceType.bishop;
+      case 'n':
+        return PieceType.knight;
+      default:
+        return null;
     }
   }
 }

@@ -27,60 +27,104 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _checkEngineStatus() async {
     final loader = EngineLoader();
     final isLoaded = await loader.loadEngine();
-    setState(() {
-      _isEngineInstalled = isLoaded;
-    });
+    if (mounted) {
+      setState(() {
+        _isEngineInstalled = isLoaded;
+      });
+    }
   }
 
   Future<void> _downloadEngine() async {
+    final engineUrl = _getEngineDownloadUrl();
+    if (engineUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Platform not supported for download')),
+      );
+      return;
+    }
+
     setState(() {
       _isDownloading = true;
       _downloadProgress = 0.0;
     });
 
     try {
-      final engineUrl = _getEngineDownloadUrl();
-      final response = await http.get(Uri.parse(engineUrl));
+      final loader = EngineLoader();
 
-      if (response.statusCode == 200) {
-        final dir = await getApplicationSupportDirectory();
-        final engineFile = File('${dir.path}/${_getEngineFileName()}');
-        await engineFile.writeAsBytes(response.bodyBytes);
+      // FIX: use EngineLoader.getInstallPath() so the saved file lands in the
+      // same directory that ChessEngineService._getBinaryPath() searches.
+      final installPath = await loader.getInstallPath();
 
-        if (await engineFile.exists()) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Engine downloaded successfully!')),
-          );
-          await _checkEngineStatus();
+      // Ensure the directory exists.
+      final dir = File(installPath).parent;
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+
+      // Stream the download so we can show real progress.
+      final request = http.Request('GET', Uri.parse(engineUrl));
+      final response = await request.send();
+
+      if (response.statusCode != 200) {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+
+      final total = response.contentLength ?? 0;
+      int received = 0;
+      final bytes = <int>[];
+
+      await for (final chunk in response.stream) {
+        bytes.addAll(chunk);
+        received += chunk.length;
+        if (total > 0 && mounted) {
+          setState(() => _downloadProgress = received / total);
         }
       }
+
+      final engineFile = File(installPath);
+      await engineFile.writeAsBytes(bytes);
+
+      // FIX: make the binary executable so the engine can actually be launched.
+      await loader.makeExecutable(installPath);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Engine downloaded successfully!')),
+        );
+        await _checkEngineStatus();
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Download failed: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Download failed: $e')));
+      }
     } finally {
-      setState(() {
-        _isDownloading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _downloadProgress = 0.0;
+        });
+      }
     }
   }
 
+  /// Replace these placeholder URLs with real release URLs when you publish.
+  /// Recommended source: https://github.com/official-stockfish/Stockfish/releases
   String _getEngineDownloadUrl() {
-    if (Platform.isAndroid) return 'https://example.com/engines/stockfish_android.so';
-    if (Platform.isIOS) return 'https://example.com/engines/stockfish_ios.dylib';
-    if (Platform.isWindows) return 'https://example.com/engines/stockfish_win.dll';
-    if (Platform.isMacOS) return 'https://example.com/engines/stockfish_mac.dylib';
-    if (Platform.isLinux) return 'https://example.com/engines/stockfish_linux.so';
+    // Android and iOS require special integration (JNI / Flutter plugin) and
+    // cannot simply download a binary at runtime.
+    if (Platform.isAndroid || Platform.isIOS) return '';
+    if (Platform.isWindows) {
+      return 'https://example.com/engines/stockfish_windows.exe';
+    }
+    if (Platform.isMacOS) {
+      return 'https://example.com/engines/stockfish_macos';
+    }
+    if (Platform.isLinux) {
+      return 'https://example.com/engines/stockfish_linux';
+    }
     return '';
-  }
-
-  String _getEngineFileName() {
-    if (Platform.isAndroid) return 'libengine.so';
-    if (Platform.isIOS) return 'libengine.dylib';
-    if (Platform.isWindows) return 'engine.dll';
-    if (Platform.isMacOS) return 'libengine.dylib';
-    if (Platform.isLinux) return 'libengine.so';
-    return 'engine';
   }
 
   @override
@@ -91,17 +135,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final fg = isDark ? Colors.white : Colors.black;
     final bg = isDark ? Colors.black : Colors.white;
 
+    // Mobile platforms can't use the download flow.
+    final canDownload = !Platform.isAndroid && !Platform.isIOS;
+
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        title: const Text("SETTINGS"),
-      ),
+      appBar: AppBar(title: const Text("SETTINGS")),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
           const SizedBox(height: 10),
 
-          // 🔥 THEME TOGGLE
+          // ── THEME ───────────────────────────────────────────────────────────
           _sectionTitle("Appearance"),
           const SizedBox(height: 12),
 
@@ -125,7 +170,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 30),
 
-          // ⚙️ ENGINE
+          // ── ENGINE ──────────────────────────────────────────────────────────
           _sectionTitle("Engine"),
           const SizedBox(height: 12),
 
@@ -133,18 +178,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Row(
                     children: [
                       Icon(
-                        _isEngineInstalled ? Icons.check : Icons.close,
+                        _isEngineInstalled ? Icons.check_circle : Icons.cancel,
                         color: _isEngineInstalled ? Colors.green : Colors.red,
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           _isEngineInstalled
-                              ? 'Engine ready'
+                              ? 'Stockfish ready'
                               : 'Not installed',
                         ),
                       ),
@@ -153,17 +199,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   if (_isDownloading) ...[
                     const SizedBox(height: 16),
-                    LinearProgressIndicator(value: _downloadProgress),
+                    LinearProgressIndicator(
+                      value: _downloadProgress > 0 ? _downloadProgress : null,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _downloadProgress > 0
+                          ? '${(_downloadProgress * 100).toStringAsFixed(0)} %'
+                          : 'Connecting…',
+                      style: const TextStyle(fontSize: 12),
+                      textAlign: TextAlign.center,
+                    ),
                   ],
 
-                  const SizedBox(height: 16),
-
-                  TextButton(
-                    onPressed: _isDownloading ? null : _downloadEngine,
-                    child: Text(
-                      _isEngineInstalled ? "REINSTALL" : "INSTALL",
+                  if (!canDownload) ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'On Android / iOS, Stockfish is bundled at build time.\n'
+                      'See the README for integration instructions.',
+                      style: TextStyle(fontSize: 12, color: Colors.orange),
                     ),
-                  ),
+                  ],
+
+                  if (canDownload) ...[
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: _isDownloading ? null : _downloadEngine,
+                      child: Text(_isEngineInstalled ? "REINSTALL" : "INSTALL"),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -171,17 +235,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 30),
 
-          // 📦 ABOUT
+          // ── ABOUT ───────────────────────────────────────────────────────────
           _sectionTitle("About"),
           const SizedBox(height: 12),
 
           Card(
             child: Column(
               children: const [
-                ListTile(
-                  title: Text("Version"),
-                  subtitle: Text("1.0.0"),
-                ),
+                ListTile(title: Text("Version"), subtitle: Text("1.0.0")),
                 Divider(),
                 ListTile(
                   title: Text("Last Updated"),
@@ -195,15 +256,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _sectionTitle(String text) {
-    return Text(
-      text.toUpperCase(),
-      style: const TextStyle(
-        fontWeight: FontWeight.bold,
-        letterSpacing: 2,
-      ),
-    );
-  }
+  Widget _sectionTitle(String text) => Text(
+    text.toUpperCase(),
+    style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2),
+  );
 
   Widget _toggleOption(String label, bool active, Color fg, Color bg) {
     return Expanded(

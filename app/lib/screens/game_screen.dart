@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -31,14 +32,14 @@ enum BotDifficulty {
 class BotProfile {
   final String id;
   final String name;
-  final String title; // short tag, e.g. "Beginner", "GM"
+  final String title;
   final String description;
   final BotDifficulty difficulty;
   final IconData icon;
   final Color accentColor;
   final int eloRating;
-  final int engineDepth; // Stockfish search depth
-  final double errorRate; // 0-1, chance of suboptimal move
+  final int engineDepth;
+  final double errorRate;
 
   const BotProfile({
     required this.id,
@@ -58,26 +59,73 @@ const List<BotProfile> kBotProfiles = [
   BotProfile(
     id: 'stockfish',
     name: 'Stockfish',
-    title: 'Pro',
-    description: 'Master at the job',
+    title: 'GM',
+    description: 'World-class chess engine',
     difficulty: BotDifficulty.grandmaster,
-    icon: Icons.child_care_rounded,
+    icon: Icons.psychology_rounded,
     accentColor: Color(0xFF10B981),
-    eloRating: 2800,
-    engineDepth: 1,
-    errorRate: 0.6,
+    eloRating: 3500,
+    engineDepth: 20,
+    errorRate: 0.0,
   ),
-
   BotProfile(
-    id: 'yak',
-    name: 'Yak',
-    title: 'Gay',
-    description: 'Master at the blowjob',
-    difficulty: BotDifficulty.grandmaster,
+    id: 'master',
+    name: 'Master',
+    title: 'Expert',
+    description: 'Strong opponent for advanced players',
+    difficulty: BotDifficulty.master,
+    icon: Icons.emoji_events_rounded,
+    accentColor: Color(0xFFF59E0B),
+    eloRating: 2200,
+    engineDepth: 14,
+    errorRate: 0.1,
+  ),
+  BotProfile(
+    id: 'advanced',
+    name: 'Advanced',
+    title: 'Hard',
+    description: 'Challenging for club players',
+    difficulty: BotDifficulty.advanced,
+    icon: Icons.trending_up_rounded,
+    accentColor: Color(0xFFEF4444),
+    eloRating: 1800,
+    engineDepth: 10,
+    errorRate: 0.2,
+  ),
+  BotProfile(
+    id: 'intermediate',
+    name: 'Intermediate',
+    title: 'Medium',
+    description: 'Good for casual players',
+    difficulty: BotDifficulty.intermediate,
+    icon: Icons.equalizer_rounded,
+    accentColor: Color(0xFF8B5CF6),
+    eloRating: 1400,
+    engineDepth: 6,
+    errorRate: 0.3,
+  ),
+  BotProfile(
+    id: 'casual',
+    name: 'Casual',
+    title: 'Easy',
+    description: 'Perfect for beginners',
+    difficulty: BotDifficulty.casual,
+    icon: Icons.spa_rounded,
+    accentColor: Color(0xFF06B6D4),
+    eloRating: 1000,
+    engineDepth: 4,
+    errorRate: 0.4,
+  ),
+  BotProfile(
+    id: 'beginner',
+    name: 'Beginner',
+    title: 'Very Easy',
+    description: 'Learn the basics',
+    difficulty: BotDifficulty.beginner,
     icon: Icons.child_care_rounded,
-    accentColor: Color(0xFF10B981),
-    eloRating: 800,
-    engineDepth: 1,
+    accentColor: Color(0xFFEC4899),
+    eloRating: 600,
+    engineDepth: 2,
     errorRate: 0.6,
   ),
 ];
@@ -100,7 +148,7 @@ class _BotSelectionSheetState extends State<BotSelectionSheet> {
   @override
   void initState() {
     super.initState();
-    _selected = widget.currentBot ?? kBotProfiles[1];
+    _selected = widget.currentBot ?? kBotProfiles[3]; // Intermediate default
   }
 
   @override
@@ -124,7 +172,6 @@ class _BotSelectionSheetState extends State<BotSelectionSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle
           Padding(
             padding: const EdgeInsets.only(top: 12, bottom: 4),
             child: Container(
@@ -136,8 +183,6 @@ class _BotSelectionSheetState extends State<BotSelectionSheet> {
               ),
             ),
           ),
-
-          // Header
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
             child: Row(
@@ -165,7 +210,6 @@ class _BotSelectionSheetState extends State<BotSelectionSheet> {
                     ],
                   ),
                 ),
-                // Selected ELO badge
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   padding: const EdgeInsets.symmetric(
@@ -205,8 +249,6 @@ class _BotSelectionSheetState extends State<BotSelectionSheet> {
               ],
             ),
           ),
-
-          // Bot list
           Flexible(
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -224,8 +266,6 @@ class _BotSelectionSheetState extends State<BotSelectionSheet> {
               },
             ),
           ),
-
-          // Confirm button
           Padding(
             padding: EdgeInsets.fromLTRB(
               24,
@@ -311,7 +351,6 @@ class _BotCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
-                // Icon container
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   width: 52,
@@ -333,8 +372,6 @@ class _BotCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 14),
-
-                // Name and description
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -385,10 +422,7 @@ class _BotCard extends StatelessWidget {
                     ],
                   ),
                 ),
-
                 const SizedBox(width: 10),
-
-                // ELO + difficulty dots
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -421,8 +455,6 @@ class _BotCard extends StatelessWidget {
                     ),
                   ],
                 ),
-
-                // Selected check
                 if (isSelected) ...[
                   const SizedBox(width: 10),
                   Icon(
@@ -441,7 +473,7 @@ class _BotCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-// DEV PANEL (shown only when kDevMode == true)
+// DEV PANEL
 // ─────────────────────────────────────────────
 
 class _DevPanel extends StatelessWidget {
@@ -474,9 +506,9 @@ class _DevPanel extends StatelessWidget {
                 color: Color(0xFF6366F1),
               ),
               const SizedBox(width: 6),
-              Text(
+              const Text(
                 'DEV PANEL',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 2,
@@ -512,8 +544,6 @@ class _DevPanel extends StatelessWidget {
             state.currentTurn == PieceColor.white ? 'White' : 'Black',
           ),
           _devRow('Status', state.status.name),
-          //_devRow('Half-moves', '${state.halfMoveClock}'),
-          //_devRow('FEN', state.fen ?? '—', mono: true, small: true),
         ],
       ),
     );
@@ -561,7 +591,7 @@ class _DevPanel extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-// BOT HEADER (shown at top of side panel)
+// BOT HEADER
 // ─────────────────────────────────────────────
 
 class _BotHeader extends StatelessWidget {
@@ -586,7 +616,6 @@ class _BotHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Bot avatar
           Stack(
             children: [
               Container(
@@ -682,7 +711,7 @@ class _BotHeader extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-// PLAYER HEADER (shows at bottom of side panel)
+// PLAYER HEADER
 // ─────────────────────────────────────────────
 
 class _PlayerHeader extends StatelessWidget {
@@ -863,25 +892,63 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   late GameService _gameService;
   late ChessEngineService _engineService;
+  late GameState _gameState;
+
   bool _isEngineInitialized = false;
-  BotProfile _currentBot = kBotProfiles[1]; // Default: Aria (Intermediate)
+  BotProfile _currentBot = kBotProfiles[3];
+
+  // Subscriptions managed here so we can cancel them on dispose.
+  StreamSubscription<double>? _evalSubscription;
 
   @override
   void initState() {
     super.initState();
-    _gameService = GameService();
     _engineService = ChessEngineService();
+    _gameService = GameService(_engineService);
+    _gameState = GameState()..currentMode = _getModeFromString(widget.mode);
+
     _initializeEngine();
     WidgetsBinding.instance.addPostFrameCallback((_) => _showBotSelection());
   }
 
+  @override
+  void dispose() {
+    _evalSubscription?.cancel();
+    super.dispose();
+  }
+
+  // ─── Engine init ──────────────────────────────────────────────────────────
+
   Future<void> _initializeEngine() async {
     final initialized = await _engineService.initialize();
-    if (mounted) {
-      setState(() => _isEngineInitialized = initialized);
-      if (!initialized && widget.mode != 'offline') {
-        _showEngineError();
-      }
+    if (!mounted) return;
+
+    setState(() => _isEngineInitialized = initialized);
+
+    if (!initialized) {
+      if (widget.mode != 'offline') _showEngineError();
+      return;
+    }
+
+    // Subscribe to live eval stream once.
+    // In offline bot mode the eval is read from the bot's own search info
+    // lines — no separate evaluation search is needed.
+    // In engine-analysis mode we also piggyback on the explicit getBestMove
+    // calls the user triggers, so the subscription still works.
+    _evalSubscription = _engineService.liveEvalStream.listen((pawns) {
+      if (!mounted) return;
+      // The engine always reports from the perspective of the side to move,
+      // so flip for black to keep the bar in White's frame of reference.
+      final whiteRelative = _gameState.currentTurn == PieceColor.black
+          ? -pawns
+          : pawns;
+      _gameState.evaluation = whiteRelative;
+      _gameState.notifyListeners();
+    });
+
+    // Engine-analysis mode: run one initial eval so the bar isn't blank.
+    if (widget.mode == 'engine') {
+      _gameService.updateEvaluation(_gameState, _engineService);
     }
   }
 
@@ -904,6 +971,8 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  // ─── Bot selection ────────────────────────────────────────────────────────
+
   Future<void> _showBotSelection({bool isChange = false}) async {
     final result = await showModalBottomSheet<BotProfile>(
       context: context,
@@ -911,42 +980,39 @@ class _GameScreenState extends State<GameScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => BotSelectionSheet(currentBot: _currentBot),
     );
-    if (result != null) {
+    if (result != null && mounted) {
       setState(() => _currentBot = result);
       if (isChange) {
-        // Reset game when bot is changed mid-game
-        final gameState = context.read<GameState?>();
-        gameState?.reset();
+        _gameState.reset();
+        if (_isEngineInitialized && widget.mode == 'engine') {
+          _gameService.updateEvaluation(_gameState, _engineService);
+        }
       }
     }
   }
 
-  // ─── RESPONSIVE LAYOUT HELPERS ───────────────
+  // ─── Layout helpers ───────────────────────────────────────────────────────
 
-  bool _isTabletOrDesktop(BuildContext context) {
-    return MediaQuery.of(context).size.width >= 768;
-  }
+  bool _isTabletOrDesktop(BuildContext context) =>
+      MediaQuery.of(context).size.width >= 768;
 
-  bool _isDesktop(BuildContext context) {
-    return MediaQuery.of(context).size.width >= 1100;
-  }
+  bool _isDesktop(BuildContext context) =>
+      MediaQuery.of(context).size.width >= 1100;
 
   double _boardSize(BuildContext context) {
     final size = MediaQuery.of(context).size;
     if (_isDesktop(context)) return (size.width * 0.55).clamp(400.0, 680.0);
     if (_isTabletOrDesktop(context))
       return (size.width * 0.6).clamp(360.0, 560.0);
-    // Mobile: square board fills width with some padding
-    final boardPad = size.width - 32;
-    return boardPad.clamp(0.0, 480.0);
+    return (size.width - 32).clamp(0.0, 480.0);
   }
 
-  // ─── BUILDS ───────────────────────────────────
+  // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => GameState()..currentMode = _getModeFromString(widget.mode),
+    return ChangeNotifierProvider.value(
+      value: _gameState,
       child: Consumer<GameState>(
         builder: (context, state, child) {
           final isTablet = _isTabletOrDesktop(context);
@@ -961,6 +1027,8 @@ class _GameScreenState extends State<GameScreen> {
       ),
     );
   }
+
+  // ─── AppBar ───────────────────────────────────────────────────────────────
 
   PreferredSizeWidget _buildAppBar(BuildContext context, GameState state) {
     final theme = Theme.of(context);
@@ -1023,38 +1091,35 @@ class _GameScreenState extends State<GameScreen> {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
           ),
-        // Change bot
         IconButton(
           icon: const Icon(Icons.swap_horiz_rounded),
           tooltip: 'Change Bot',
           onPressed: () => _showBotSelection(isChange: true),
         ),
-        // New game
         IconButton(
           icon: const Icon(Icons.refresh_rounded),
           tooltip: 'New Game',
           onPressed: state.isEngineThinking
               ? null
               : () {
-                  state.reset();
-                  _gameService.updateEvaluation(state, _engineService);
+                  _gameState.reset();
+                  if (_isEngineInitialized && widget.mode == 'engine') {
+                    _gameService.updateEvaluation(_gameState, _engineService);
+                  }
                 },
         ),
         if (kDevMode)
           IconButton(
             icon: const Icon(Icons.terminal_rounded, color: Color(0xFF6366F1)),
             tooltip: '[DEV] Toggle Panel',
-            onPressed: () {
-              // Toggle dev panel visibility via state or local bool
-              // Wire up to your state management as needed
-            },
+            onPressed: () {},
           ),
         const SizedBox(width: 4),
       ],
     );
   }
 
-  // ─── TABLET / DESKTOP: Side by side layout ───
+  // ─── Tablet / desktop layout ──────────────────────────────────────────────
 
   Widget _buildTabletLayout(BuildContext context, GameState state) {
     final boardSz = _boardSize(context);
@@ -1067,7 +1132,6 @@ class _GameScreenState extends State<GameScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // ── Board column ──────────────────
             Flexible(
               flex: 3,
               child: Center(
@@ -1088,10 +1152,7 @@ class _GameScreenState extends State<GameScreen> {
                 ),
               ),
             ),
-
             SizedBox(width: isDesktop ? 40 : 24),
-
-            // ── Side panel ───────────────────
             SizedBox(
               width: isDesktop ? 320 : 260,
               child: _buildSidePanel(context, state),
@@ -1102,22 +1163,16 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  // ─── MOBILE: Stacked layout ──────────────────
+  // ─── Mobile layout ────────────────────────────────────────────────────────
 
   Widget _buildMobileLayout(BuildContext context, GameState state) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Status banner
           _StatusBanner(status: state.status, currentTurn: state.currentTurn),
-
-          // Bot header (compact on mobile)
           _BotHeader(bot: _currentBot, isThinking: state.isEngineThinking),
-
           const SizedBox(height: 12),
-
-          // Board
           AspectRatio(
             aspectRatio: 1,
             child: Stack(
@@ -1130,19 +1185,13 @@ class _GameScreenState extends State<GameScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 12),
-
-          // Player header
           _PlayerHeader(
             isYourTurn:
                 state.currentTurn == PieceColor.white &&
                 !state.isEngineThinking,
           ),
-
           const SizedBox(height: 12),
-
-          // Evaluation bar (horizontal on mobile)
           if (_isEngineInitialized)
             SizedBox(
               height: 40,
@@ -1151,71 +1200,53 @@ class _GameScreenState extends State<GameScreen> {
                 isHorizontal: true,
               ),
             ),
-
           const SizedBox(height: 12),
-
-          // Game controls
           GameControls(
             gameService: _gameService,
             engineService: _engineService,
             engineAvailable: _isEngineInitialized,
+            onEngineMoveRequested: () {},
           ),
-
           if (kDevMode) ...[
             const SizedBox(height: 12),
             _DevPanel(bot: _currentBot, state: state),
           ],
-
           const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-  // ─── SIDE PANEL (tablet/desktop) ─────────────
+  // ─── Side panel (tablet) ──────────────────────────────────────────────────
 
   Widget _buildSidePanel(BuildContext context, GameState state) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Bot header
         _BotHeader(bot: _currentBot, isThinking: state.isEngineThinking),
-
         const SizedBox(height: 8),
-
-        // Status banner
         _StatusBanner(status: state.status, currentTurn: state.currentTurn),
         if (_isEngineInitialized)
           SizedBox(
-            height: 200, // vertical bar needs height
+            height: 200,
             child: EvaluationBar(
               evaluation: state.evaluation,
               isHorizontal: false,
             ),
           ),
-
         const SizedBox(height: 12),
-        const SizedBox(height: 8),
-
-        const SizedBox(height: 8),
-
-        // Game controls
         GameControls(
           gameService: _gameService,
           engineService: _engineService,
           engineAvailable: _isEngineInitialized,
+          onEngineMoveRequested: () {},
         ),
-
         const SizedBox(height: 8),
-
-        // Player header
         _PlayerHeader(
           isYourTurn:
               state.currentTurn == PieceColor.white && !state.isEngineThinking,
         ),
-
-        // Dev panel
         if (kDevMode) ...[
           const SizedBox(height: 12),
           _DevPanel(bot: _currentBot, state: state),

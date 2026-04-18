@@ -43,3 +43,4 @@
 *.swp
 .vscode
 digest.txt
+stockfish/

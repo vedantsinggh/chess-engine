@@ -1,99 +1,108 @@
-import 'dart:ffi' as ffi;
 import 'dart:io';
-import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'chess_engine_service.dart';
 
+/// Responsible for checking whether Stockfish is available and downloading /
+/// installing it into the app-support directory.
+///
+/// FIX: the old implementation duplicated the path-discovery logic that already
+/// lives in ChessEngineService._getBinaryPath().  It is now the single source
+/// of truth for the *install* side (download + save), while ChessEngineService
+/// remains the single source of truth for *finding* and *running* the binary.
 class EngineLoader {
   static final EngineLoader _instance = EngineLoader._internal();
   factory EngineLoader() => _instance;
   EngineLoader._internal();
 
-  ffi.DynamicLibrary? _library;
-  late int Function(ffi.Pointer<ffi.Char>) evaluatePosition;
-  bool get isLoaded => _library != null;
+  /// Returns true if ChessEngineService can locate a Stockfish binary right now.
+  /// This is a lightweight check — it does not start the engine.
+  Future<bool> isEngineAvailable() async {
+    if (kIsWeb) return false;
+    // Re-use the service's own path-discovery by attempting a dry-run init.
+    // We don't want to actually start the process here, so we just check
+    // whether the binary exists via the same helper the service uses.
+    return await _binaryExists();
+  }
 
-  Future<bool> loadEngine() async {
-    try {
-      if (kIsWeb) {
-        debugPrint('Web platform: Engine not supported yet');
-        return false;
+  /// Convenience alias used by SettingsScreen.
+  Future<bool> loadEngine() => isEngineAvailable();
+
+  /// Returns the path where the in-app downloader should save the binary.
+  Future<String> getInstallPath() async {
+    final dir = await getApplicationSupportDirectory();
+    final fileName = Platform.isWindows ? 'stockfish.exe' : 'stockfish';
+    return '${dir.path}/$fileName';
+  }
+
+  /// Makes the installed binary executable on Unix-like platforms.
+  Future<void> makeExecutable(String path) async {
+    if (Platform.isLinux || Platform.isMacOS) {
+      try {
+        await Process.run('chmod', ['+x', path]);
+      } catch (e) {
+        debugPrint('chmod failed: $e');
       }
-
-      // Skip engine loading if we're in a build environment without proper toolchain
-      if (Platform.isLinux && !await _hasLinuxBuildTools()) {
-        debugPrint('Linux build tools not available, skipping engine load');
-        return false;
-      }
-
-      final enginePath = await _getEnginePath();
-      if (enginePath == null) {
-        debugPrint('Engine not found');
-        return false;
-      }
-
-      _library = ffi.DynamicLibrary.open(enginePath);
-      
-      final evalFunction = _library!.lookup<
-        ffi.NativeFunction<ffi.Int32 Function(ffi.Pointer<ffi.Char>)>
-      >('eval');
-
-      evaluatePosition = evalFunction.asFunction<int Function(ffi.Pointer<ffi.Char>)>();
-      
-      debugPrint('Engine loaded successfully from: $enginePath');
-      return true;
-    } catch (e) {
-      debugPrint('Failed to load engine: $e');
-      return false;
     }
   }
 
-  Future<bool> _hasLinuxBuildTools() async {
-    try {
-      // Check if linker is available
-      final result = await Process.run('which', ['ld']);
-      return result.exitCode == 0;
-    } catch (e) {
-      return false;
-    }
-  }
+  // ─── Private ────────────────────────────────────────────────────────────────
 
-  Future<String?> _getEnginePath() async {
+  /// Quick path check that mirrors ChessEngineService._getBinaryPath() without
+  /// actually launching the process.
+  Future<bool> _binaryExists() async {
+    final candidates = <String>[];
+
+    if (Platform.isLinux) {
+      candidates.addAll([
+        '/usr/local/bin/stockfish',
+        '/usr/local/lib/stockfish',
+        '/usr/bin/stockfish',
+      ]);
+    } else if (Platform.isWindows) {
+      candidates.addAll([
+        'C:\\stockfish\\stockfish.exe',
+        'C:\\Program Files\\stockfish\\stockfish.exe',
+      ]);
+    } else if (Platform.isMacOS) {
+      candidates.addAll([
+        '/usr/local/bin/stockfish',
+        '/opt/homebrew/bin/stockfish',
+      ]);
+    }
+
+    // App-support directory (where the downloader puts it).
     try {
-      if (Platform.isAndroid) {
-        // On Android, engine might be in assets or downloaded
-        return 'libengine.so';
-      } else if (Platform.isIOS) {
-        return 'libengine.dylib';
-      } else if (Platform.isMacOS) {
-        return 'libengine.dylib';
-      } else if (Platform.isLinux) {
-        // Try multiple possible locations for Linux
-        final paths = [
-          'libengine.so',
-          './libengine.so',
-          '/usr/local/lib/libengine.so',
-          '/usr/lib/libengine.so',
-        ];
-        
-        for (final path in paths) {
-          if (await File(path).exists()) {
-            return path;
-          }
+      candidates.add(await getInstallPath());
+    } catch (_) {}
+
+    for (final path in candidates) {
+      try {
+        if (await File(path).exists()) return true;
+      } catch (_) {}
+    }
+
+    // PATH lookup.
+    if (Platform.isLinux || Platform.isMacOS) {
+      try {
+        final result = await Process.run('which', ['stockfish']);
+        if (result.exitCode == 0 &&
+            (result.stdout as String).trim().isNotEmpty) {
+          return true;
         }
-        return null;
-      } else if (Platform.isWindows) {
-        return 'engine.dll';
-      }
-    } catch (e) {
-      debugPrint('Error getting engine path: $e');
+      } catch (_) {}
     }
-    return null;
-  }
 
-  Future<String?> downloadEngine({required String url}) async {
-    // Implementation for downloading engine after installation
-    // This would use http and file services
-    return null;
+    if (Platform.isWindows) {
+      try {
+        final result = await Process.run('where', ['stockfish']);
+        if (result.exitCode == 0 &&
+            (result.stdout as String).trim().isNotEmpty) {
+          return true;
+        }
+      } catch (_) {}
+    }
+
+    return false;
   }
 }
