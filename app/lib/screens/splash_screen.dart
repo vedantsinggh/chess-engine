@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'home_screen.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -14,37 +16,64 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _scale;
   late Animation<double> _opacity;
-  late Animation<double> _rotation;
+  late Animation<double> _taglineOpacity;
 
   @override
   void initState() {
     super.initState();
 
+
+	// Then in your SplashScreen's initState, after setup:
+	FlutterNativeSplash.remove(); // ← removes native splash, shows your animated one
+    // Force full-screen immersive dark experience
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Color(0xFF0F0F0F),
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+    );
+
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 1000),
     );
 
-    _scale = Tween(begin: 0.7, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    // Logo: subtle scale from 0.85 → 1.0 (premium, not dramatic)
+    _scale = Tween<double>(begin: 0.85, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
+      ),
     );
 
-    _opacity = Tween(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    // Logo fade-in
+    _opacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
+      ),
     );
 
-    _rotation = Tween(begin: -0.05, end: 0.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    // Tagline fades in slightly after logo (staggered)
+    _taglineOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.5, 1.0, curve: Curves.easeIn),
+      ),
     );
 
     _controller.forward();
 
-    // exit fast
-    Timer(const Duration(milliseconds: 1200), () {
+    // Navigate after 2.5 seconds
+    Timer(const Duration(milliseconds: 2500), () {
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          transitionDuration: const Duration(milliseconds: 300),
+          transitionDuration: const Duration(milliseconds: 400),
           pageBuilder: (_, __, ___) => const HomeScreen(isDark: false),
           transitionsBuilder: (_, anim, __, child) {
             return FadeTransition(opacity: anim, child: child);
@@ -57,80 +86,60 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void dispose() {
     _controller.dispose();
+    // Restore system UI when leaving splash
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
-  }
-
-  Widget _buildLogo() {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Glow
-        Container(
-          width: 140,
-          height: 140,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.orange.withOpacity(0.08),
-          ),
-        ),
-
-        // Main Icon (yak + chess hybrid vibe)
-        Icon(
-          Icons.flutter_dash, // fallback icon
-          size: 64,
-          color: Colors.orangeAccent,
-        ),
-      ],
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF000000),
       body: Center(
         child: AnimatedBuilder(
           animation: _controller,
           builder: (_, __) {
-            return Opacity(
-              opacity: _opacity.value,
-              child: Transform.rotate(
-                angle: _rotation.value,
-                child: Transform.scale(
-                  scale: _scale.value,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildLogo(),
-                      const SizedBox(height: 20),
-
-                      // App Name
-                      Text(
-                        "YAK",
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 4,
-                          color: isDark ? Colors.white : Colors.black,
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Logo ──────────────────────────────────────────────
+                Opacity(
+                  opacity: _opacity.value,
+                  child: Transform.scale(
+                    scale: _scale.value,
+                    child: SizedBox(
+                      width: 120,
+                      height: 120,
+                      child: Image.asset(
+                        'assets/images/rank_inverted.png',
+                        fit: BoxFit.contain,
+                        // Graceful fallback if asset is missing during dev
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.favorite, // chess-themed fallback
+                          size: 80,
+                          color: Color(0xFFE8E8E8),
                         ),
                       ),
-
-                      const SizedBox(height: 6),
-
-                      Text(
-                        "Play Smart.",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[500],
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+
+                const SizedBox(height: 1),
+
+                // ── Tagline (staggered) ───────────────────────────────
+                Opacity(
+                  opacity: _taglineOpacity.value,
+                  child: const Text(
+                    'Play Smart.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w300,
+                      letterSpacing: 2.5,
+                      color: Color(0xFF666666),
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         ),

@@ -3,15 +3,15 @@
 set -e
 
 if [ ! -d "stockfish/" ]; then
-    git clone https://github.com/official-stockfish/Stockfish || exit 1
+    git clone --depth 1 https://github.com/official-stockfish/Stockfish || exit 1
     mv Stockfish stockfish || exit 1
 else
-    exit 1
+    echo "gay"
 fi
 
 cd stockfish/src || exit 1
 
-make -j profile-build ARCH=native || exit 1  
+make -j6 profile-build ARCH=native || exit 1  
 
 if [ -f ./stockfish ]; then
     sudo cp -f ./stockfish /usr/local/lib/ || exit 1

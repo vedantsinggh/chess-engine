@@ -49,7 +49,7 @@ class HomeScreen extends StatelessWidget {
 
                   // TITLE
                   Text(
-                    "CHESS",
+                    "RANK",
                     style: TextStyle(
                       fontSize: width * 0.1,
                       fontWeight: FontWeight.w900,

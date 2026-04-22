@@ -18,6 +18,7 @@ dependencies:
   http: ^1.1.2
   ffi: ^2.1.0
   flutter_svg: ^2.0.10
+  flutter_native_splash: ^2.4.0
 
 flutter:
   uses-material-design: true
@@ -26,3 +27,33 @@ flutter:
     - assets/pieces/
     - assets/engines/
     - assets/icons/
+    - assets/images/
+
+flutter_native_splash:
+  # Background colour (dark, matches app splash bg)
+  color: "#0F0F0F"
+ 
+  # Your logo — will be centred on the native splash
+  image: assets/images/rank_inverted.png
+ 
+  # Optional: constrain logo size on the native splash
+  # android_12 needs its own image entry (see below)
+  android: true
+  ios: true
+  web: false
+ 
+  # Keep the native splash visible until Flutter is ready
+  fullscreen: true
+ 
+  # ── Android 12+ specific (required) ──────────
+  android_12:
+    color: "#0F0F0F"
+    image: assets/images/rank.png
+    # Icon background for the circular badge on A12
+    icon_background_color: "#0F0F0F"
+ 
+  # ── iOS specific ─────────────────────────────
+  # ios_content_mode controls how the image is fitted
+  # "center" keeps the logo at its natural size
+  ios_content_mode: center
+ 
