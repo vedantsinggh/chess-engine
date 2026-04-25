@@ -23,9 +23,7 @@ class _SplashScreenState extends State<SplashScreen>
     super.initState();
 
 
-	// Then in your SplashScreen's initState, after setup:
-	FlutterNativeSplash.remove(); // ← removes native splash, shows your animated one
-    // Force full-screen immersive dark experience
+	FlutterNativeSplash.remove();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
@@ -74,7 +72,7 @@ class _SplashScreenState extends State<SplashScreen>
         context,
         PageRouteBuilder(
           transitionDuration: const Duration(milliseconds: 400),
-          pageBuilder: (_, __, ___) => const HomeScreen(isDark: false),
+          pageBuilder: (_, __, ___) => const HomeScreen(),
           transitionsBuilder: (_, anim, __, child) {
             return FadeTransition(opacity: anim, child: child);
           },
@@ -102,7 +100,6 @@ class _SplashScreenState extends State<SplashScreen>
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ── Logo ──────────────────────────────────────────────
                 Opacity(
                   opacity: _opacity.value,
                   child: Transform.scale(
@@ -126,7 +123,6 @@ class _SplashScreenState extends State<SplashScreen>
 
                 const SizedBox(height: 1),
 
-                // ── Tagline (staggered) ───────────────────────────────
                 Opacity(
                   opacity: _taglineOpacity.value,
                   child: const Text(

@@ -12,6 +12,6 @@ void main() {
       create: (_) => ThemeController(),
       child: const ChessApp(),
     ),
-  );
+	);
 }
 
