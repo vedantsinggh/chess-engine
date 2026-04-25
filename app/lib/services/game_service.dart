@@ -9,18 +9,90 @@ class GameService {
   final MoveValidator _moveValidator = MoveValidator();
   final ChessEngineService _engineService;
   bool _engineBusy = false;
+
   GameService(this._engineService);
+
+  // ================= FEN LOADER =================
+  void loadFen(GameState state, String fen) {
+    try {
+      final parts = fen.split(' ');
+      if (parts.isEmpty) return;
+
+      final boardPart = parts[0];
+      final rows = boardPart.split('/');
+
+      List<List<Piece?>> newBoard =
+          List.generate(8, (_) => List.filled(8, null));
+
+      for (int r = 0; r < 8; r++) {
+        int col = 0;
+
+        for (var char in rows[r].split('')) {
+          if (int.tryParse(char) != null) {
+            col += int.parse(char);
+          } else {
+            newBoard[r][col] = _fenToPiece(char);
+            col++;
+          }
+        }
+      }
+
+      state.board = newBoard;
+
+      // Turn
+      if (parts.length > 1) {
+        state.currentTurn =
+            parts[1] == 'w' ? PieceColor.white : PieceColor.black;
+      }
+
+      // Reset extras (safe defaults)
+      state.selectedPosition = null;
+      state.validMoves = [];
+      state.enPassantTarget = null;
+      state.pendingPromotion = null;
+
+      state.notifyListeners();
+    } catch (e) {
+      debugPrint('FEN load error: $e');
+    }
+  }
+
+  Piece _fenToPiece(String char) {
+    final isWhite = char == char.toUpperCase();
+
+    switch (char.toLowerCase()) {
+      case 'p':
+        return Piece(PieceType.pawn,
+            isWhite ? PieceColor.white : PieceColor.black);
+      case 'r':
+        return Piece(PieceType.rook,
+            isWhite ? PieceColor.white : PieceColor.black);
+      case 'n':
+        return Piece(PieceType.knight,
+            isWhite ? PieceColor.white : PieceColor.black);
+      case 'b':
+        return Piece(PieceType.bishop,
+            isWhite ? PieceColor.white : PieceColor.black);
+      case 'q':
+        return Piece(PieceType.queen,
+            isWhite ? PieceColor.white : PieceColor.black);
+      case 'k':
+        return Piece(PieceType.king,
+            isWhite ? PieceColor.white : PieceColor.black);
+      default:
+        throw Exception('Invalid FEN char: $char');
+    }
+  }
+
+  // ================= EXISTING CODE =================
 
   void handleSquareTap(GameState state, int row, int col) {
     if (state.isEngineThinking) return;
-
-    // If there is a pending promotion, ignore taps until resolved
     if (state.pendingPromotion != null) return;
 
     final piece = state.board[row][col];
 
     if (state.selectedPosition == null) {
-      // Select a piece if it belongs to the current player
       if (piece != null && piece.color == state.currentTurn) {
         state.selectedPosition = Position(row, col);
         state.validMoves = _moveValidator.getLegalMoves(state, row, col);
@@ -31,7 +103,6 @@ class GameService {
     }
   }
 
-  /// Call this after a promotion dialog to complete the pending promotion.
   void completePromotion(GameState state, PieceType chosenType) {
     final pos = state.pendingPromotion;
     if (pos == null) return;
@@ -75,15 +146,12 @@ class GameService {
 
   void resetGame(GameState state) => state.reset();
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // INTERNAL
-  // ─────────────────────────────────────────────────────────────────────────
+  // ================= INTERNAL =================
 
   void _handleMove(GameState state, int toR, int toC) {
     final fromR = state.selectedPosition!.row;
     final fromC = state.selectedPosition!.col;
 
-    // Deselect on same-square tap
     if (fromR == toR && fromC == toC) {
       state.selectedPosition = null;
       state.validMoves = [];
@@ -91,7 +159,6 @@ class GameService {
       return;
     }
 
-    // Re-select a different piece of the same color
     final targetPiece = state.board[toR][toC];
     if (targetPiece != null && targetPiece.color == state.currentTurn) {
       state.selectedPosition = Position(toR, toC);
@@ -100,7 +167,6 @@ class GameService {
       return;
     }
 
-    // Attempt the move
     if (_moveValidator.isValidMove(state, fromR, fromC, toR, toC)) {
       _applyMove(state, fromR, fromC, toR, toC);
     } else {
@@ -113,58 +179,44 @@ class GameService {
   void _applyMove(GameState state, int fromR, int fromC, int toR, int toC) {
     final piece = state.board[fromR][fromC]!;
 
-    // ── En passant capture ─────────────────────────────────────────────────
-    // Detect: pawn moves diagonally to an empty square
     final isEnPassant =
         piece.type == PieceType.pawn &&
         fromC != toC &&
         state.board[toR][toC] == null;
 
     if (isEnPassant) {
-      // Remove the captured pawn (it sits on the same rank as the moving pawn)
       state.board[fromR][toC] = null;
     }
 
-    // ── Castling ────────────────────────────────────────────────────────────
     final isCastling = piece.type == PieceType.king && (toC - fromC).abs() == 2;
 
     if (isCastling) {
       if (toC == 6) {
-        // Kingside: move rook from h-file to f-file
         state.board[fromR][5] = state.board[fromR][7];
         state.board[fromR][7] = null;
       } else {
-        // Queenside: move rook from a-file to d-file
         state.board[fromR][3] = state.board[fromR][0];
         state.board[fromR][0] = null;
       }
     }
 
-    // ── Move the piece ───────────────────────────────────────────────────────
     state.board[toR][toC] = state.board[fromR][fromC];
     state.board[fromR][fromC] = null;
 
-    // ── Update castling rights ───────────────────────────────────────────────
     _updateCastlingRights(state, piece, fromR, fromC);
 
-    // ── Update en passant target ─────────────────────────────────────────────
-    // Set only when a pawn just moved two squares
     if (piece.type == PieceType.pawn && (toR - fromR).abs() == 2) {
-      // The en passant target square is the square "behind" the pawn
       final epRow = (fromR + toR) ~/ 2;
       state.enPassantTarget = Position(epRow, fromC);
     } else {
       state.enPassantTarget = null;
     }
 
-    // ── Clear selection ──────────────────────────────────────────────────────
     state.selectedPosition = null;
     state.validMoves = [];
 
-    // ── Pawn promotion ───────────────────────────────────────────────────────
     if (piece.type == PieceType.pawn && (toR == 0 || toR == 7)) {
       state.pendingPromotion = Position(toR, toC);
-      // Don't switch turns yet — wait for completePromotion()
       state.notifyListeners();
       return;
     }
@@ -172,14 +224,11 @@ class GameService {
     _finalizeMove(state);
   }
 
-  /// Switch turns and compute check / checkmate / stalemate.
   void _finalizeMove(GameState state) {
-    // Switch turn
     state.currentTurn = state.currentTurn == PieceColor.white
         ? PieceColor.black
         : PieceColor.white;
 
-    // Determine new status
     final inCheck = _moveValidator.isKingInCheck(
       state.board,
       state.currentTurn,
@@ -197,9 +246,11 @@ class GameService {
     }
 
     state.notifyListeners();
+
     if (state.currentMode == GameMode.engine) {
       updateEvaluation(state, _engineService);
     }
+
     onMoveCompleted(state);
   }
 
@@ -211,7 +262,6 @@ class GameService {
   ) {
     final r = state.castlingRights;
 
-    // King moves → lose all castling rights for that color
     if (movedPiece.type == PieceType.king) {
       if (movedPiece.isWhite) {
         r.whiteKingside = false;
@@ -223,7 +273,6 @@ class GameService {
       return;
     }
 
-    // Rook moves from its original square → lose that side's right
     if (movedPiece.type == PieceType.rook) {
       if (fromR == 7 && fromC == 7) r.whiteKingside = false;
       if (fromR == 7 && fromC == 0) r.whiteQueenside = false;
@@ -233,13 +282,8 @@ class GameService {
   }
 
   void onMoveCompleted(GameState state) {
-    // Only run in bot mode
     if (state.currentMode != GameMode.offline) return;
-
-    // Engine plays black (based on your current design)
     if (state.currentTurn != PieceColor.black) return;
-
-    // Do not trigger if game ended
     if (state.status == GameStatus.checkmate) return;
     if (state.status == GameStatus.stalemate) return;
 
@@ -256,12 +300,9 @@ class GameService {
 
     try {
       final move = await getEngineMove(state, _engineService);
-
       if (move != null) {
         _applyEngineMove(state, move);
       }
-    } catch (_) {
-      // ignore or log
     } finally {
       state.isEngineThinking = false;
       _engineBusy = false;
@@ -277,7 +318,7 @@ class GameService {
     final toCol = uciMove[2].codeUnitAt(0) - 'a'.codeUnitAt(0);
     final toRow = 8 - int.parse(uciMove[3]);
 
-    _makeMoveDirect(state, fromRow, fromCol, toRow, toCol);
+    _applyMove(state, fromRow, fromCol, toRow, toCol);
 
     if (uciMove.length >= 5) {
       final pieceType = _promotionCharToPieceType(uciMove[4]);
@@ -285,16 +326,6 @@ class GameService {
         completePromotion(state, pieceType);
       }
     }
-  }
-
-  void _makeMoveDirect(
-    GameState state,
-    int fromR,
-    int fromC,
-    int toR,
-    int toC,
-  ) {
-    _applyMove(state, fromR, fromC, toR, toC);
   }
 
   PieceType? _promotionCharToPieceType(String char) {
