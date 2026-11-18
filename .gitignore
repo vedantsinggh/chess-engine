@@ -44,3 +44,6 @@
 .vscode
 digest.txt
 stockfish/
+# Build output
+engine/build/
+build/
