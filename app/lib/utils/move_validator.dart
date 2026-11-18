@@ -56,12 +56,37 @@ class MoveValidator {
     for (var r = 0; r < 8; r++) {
       for (var c = 0; c < 8; c++) {
         final p = state.board[r][c];
-        if (p != null && p.color == state.currentTurn) {
-          if (getLegalMoves(state, r, c).isNotEmpty) return true;
+        if (p == null || p.color != state.currentTurn) continue;
+        for (var tr = 0; tr < 8; tr++) {
+          for (var tc = 0; tc < 8; tc++) {
+            if (isValidMove(state, r, c, tr, tc)) return true;
+          }
         }
       }
     }
     return false;
+  }
+
+  /// True when neither side can possibly deliver mate: K v K, K+minor v K,
+  /// or kings plus bishops that all stand on the same square colour.
+  bool isInsufficientMaterial(List<List<Piece?>> board) {
+    final minors = <({PieceType type, int squareColor})>[];
+    for (var r = 0; r < 8; r++) {
+      for (var c = 0; c < 8; c++) {
+        final p = board[r][c];
+        if (p == null || p.type == PieceType.king) continue;
+        if (p.type == PieceType.pawn ||
+            p.type == PieceType.rook ||
+            p.type == PieceType.queen) {
+          return false;
+        }
+        minors.add((type: p.type, squareColor: (r + c) % 2));
+      }
+    }
+    if (minors.length <= 1) return true;
+    // Any number of bishops, all on one colour, with no knights.
+    return minors.every((m) => m.type == PieceType.bishop) &&
+        minors.every((m) => m.squareColor == minors.first.squareColor);
   }
 
   // PSEUDO-LEGAL MOVE SHAPES (ignore leaving king in check)

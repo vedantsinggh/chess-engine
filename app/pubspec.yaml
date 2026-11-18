@@ -1,5 +1,5 @@
 name: app
-description: "A new Flutter project."
+description: "Rank — a chess app with a built-in UCI engine."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -12,20 +12,20 @@ dependencies:
     sdk: flutter
   provider: ^6.1.1
   path_provider: ^2.1.1
-  shared_preferences: ^2.2.2
-  flutter_local_notifications: ^16.3.0
-  url_launcher: ^6.2.4
-  http: ^1.1.2
-  ffi: ^2.1.0
   flutter_svg: ^2.0.10
   flutter_native_splash: ^2.4.0
+  shared_preferences: ^2.5.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true
   
   assets:
     - assets/pieces/
-    - assets/engines/
     - assets/icons/
     - assets/images/
 

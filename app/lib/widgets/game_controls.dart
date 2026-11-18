@@ -5,7 +5,6 @@ import '../models/game_state.dart';
 import '../services/game_service.dart';
 import '../services/chess_engine_service.dart';
 import '../utils/fen_converter.dart';
-import 'evaluation_bar.dart';
 
 class GameControls extends StatelessWidget {
   final GameService gameService;

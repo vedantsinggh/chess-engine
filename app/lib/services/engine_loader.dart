@@ -1,108 +1,106 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'chess_engine_service.dart';
 
-/// Responsible for checking whether Stockfish is available and downloading /
-/// installing it into the app-support directory.
+/// Single source of truth for locating a UCI engine binary on disk.
 ///
-/// FIX: the old implementation duplicated the path-discovery logic that already
-/// lives in ChessEngineService._getBinaryPath().  It is now the single source
-/// of truth for the *install* side (download + save), while ChessEngineService
-/// remains the single source of truth for *finding* and *running* the binary.
+/// Search order:
+///   1. `CHESS_ENGINE_PATH` environment variable (any UCI engine).
+///   2. The project's own engine, `chess_engine` ("Rank"): the app-support
+///      directory, `~/.local/bin` (where `chess.sh` installs it), or a local
+///      `engine/build` directory when running from the repo.
+///   3. Stockfish: well-known system paths, the app-support directory, `PATH`.
 class EngineLoader {
   static final EngineLoader _instance = EngineLoader._internal();
   factory EngineLoader() => _instance;
   EngineLoader._internal();
 
-  /// Returns true if ChessEngineService can locate a Stockfish binary right now.
-  /// This is a lightweight check — it does not start the engine.
-  Future<bool> isEngineAvailable() async {
-    if (kIsWeb) return false;
-    // Re-use the service's own path-discovery by attempting a dry-run init.
-    // We don't want to actually start the process here, so we just check
-    // whether the binary exists via the same helper the service uses.
-    return await _binaryExists();
-  }
+  static String get _exe => Platform.isWindows ? '.exe' : '';
 
-  /// Convenience alias used by SettingsScreen.
-  Future<bool> loadEngine() => isEngineAvailable();
+  /// Desktop platforms only — mobile sandboxes don't allow spawning binaries.
+  bool get isSupportedPlatform =>
+      !kIsWeb && (Platform.isLinux || Platform.isMacOS || Platform.isWindows);
 
-  /// Returns the path where the in-app downloader should save the binary.
-  Future<String> getInstallPath() async {
-    final dir = await getApplicationSupportDirectory();
-    final fileName = Platform.isWindows ? 'stockfish.exe' : 'stockfish';
-    return '${dir.path}/$fileName';
-  }
+  Future<bool> isEngineAvailable() async => await findEngine() != null;
 
-  /// Makes the installed binary executable on Unix-like platforms.
-  Future<void> makeExecutable(String path) async {
-    if (Platform.isLinux || Platform.isMacOS) {
-      try {
-        await Process.run('chmod', ['+x', path]);
-      } catch (e) {
-        debugPrint('chmod failed: $e');
-      }
+  /// Directory where engines can be dropped in for the app to find.
+  Future<String?> appSupportDir() async {
+    try {
+      return (await getApplicationSupportDirectory()).path;
+    } catch (_) {
+      return null;
     }
   }
 
-  // ─── Private ────────────────────────────────────────────────────────────────
+  /// Returns the absolute path of the first engine found, or null.
+  Future<String?> findEngine() async {
+    if (!isSupportedPlatform) return null;
 
-  /// Quick path check that mirrors ChessEngineService._getBinaryPath() without
-  /// actually launching the process.
-  Future<bool> _binaryExists() async {
-    final candidates = <String>[];
+    final override = Platform.environment['CHESS_ENGINE_PATH'];
+    if (override != null && override.isNotEmpty) {
+      if (await _usable(override)) return override;
+      debugPrint('CHESS_ENGINE_PATH=$override is not an executable file');
+    }
 
-    if (Platform.isLinux) {
-      candidates.addAll([
+    final support = await appSupportDir();
+    final home =
+        Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+    final sep = Platform.pathSeparator;
+
+    final candidates = <String>[
+      // ── Built-in engine ──
+      if (support != null) '$support${sep}chess_engine$_exe',
+      if (home != null) '$home$sep.local${sep}bin${sep}chess_engine$_exe',
+      if (!Platform.isWindows) '/usr/local/bin/chess_engine',
+      '${Directory.current.path}$sep..${sep}engine${sep}build${sep}chess_engine$_exe',
+      '${Directory.current.path}${sep}engine${sep}build${sep}chess_engine$_exe',
+
+      // ── Stockfish ──
+      if (support != null) '$support${sep}stockfish$_exe',
+      if (Platform.isLinux) ...[
         '/usr/local/bin/stockfish',
-        '/usr/local/lib/stockfish',
         '/usr/bin/stockfish',
-      ]);
-    } else if (Platform.isWindows) {
-      candidates.addAll([
-        'C:\\stockfish\\stockfish.exe',
-        'C:\\Program Files\\stockfish\\stockfish.exe',
-      ]);
-    } else if (Platform.isMacOS) {
-      candidates.addAll([
+        '/usr/games/stockfish',
+      ],
+      if (Platform.isMacOS) ...[
         '/usr/local/bin/stockfish',
         '/opt/homebrew/bin/stockfish',
-      ]);
-    }
-
-    // App-support directory (where the downloader puts it).
-    try {
-      candidates.add(await getInstallPath());
-    } catch (_) {}
+      ],
+      if (Platform.isWindows) ...[
+        'C:\\stockfish\\stockfish.exe',
+        'C:\\Program Files\\stockfish\\stockfish.exe',
+      ],
+      if (home != null) '$home$sep.local${sep}bin${sep}stockfish$_exe',
+    ];
 
     for (final path in candidates) {
-      try {
-        if (await File(path).exists()) return true;
-      } catch (_) {}
+      if (await _usable(path)) return File(path).absolute.path;
     }
 
     // PATH lookup.
-    if (Platform.isLinux || Platform.isMacOS) {
+    for (final name in ['chess_engine', 'stockfish']) {
       try {
-        final result = await Process.run('which', ['stockfish']);
-        if (result.exitCode == 0 &&
-            (result.stdout as String).trim().isNotEmpty) {
-          return true;
+        final result = await Process.run(
+          Platform.isWindows ? 'where' : 'which',
+          [name],
+        );
+        if (result.exitCode == 0) {
+          final p = (result.stdout as String).trim().split('\n').first.trim();
+          if (p.isNotEmpty) return p;
         }
       } catch (_) {}
     }
+    return null;
+  }
 
-    if (Platform.isWindows) {
-      try {
-        final result = await Process.run('where', ['stockfish']);
-        if (result.exitCode == 0 &&
-            (result.stdout as String).trim().isNotEmpty) {
-          return true;
-        }
-      } catch (_) {}
+  Future<bool> _usable(String path) async {
+    try {
+      final stat = await FileStat.stat(path);
+      if (stat.type != FileSystemEntityType.file) return false;
+      if (Platform.isWindows) return true;
+      return stat.mode & 0x49 != 0; // any execute bit (0o111)
+    } catch (_) {
+      return false;
     }
-
-    return false;
   }
 }

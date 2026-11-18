@@ -3,23 +3,52 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../models/position.dart';
 import '../services/game_service.dart';
+import '../services/settings_controller.dart';
 import 'move_dot.dart';
+import 'piece_image.dart';
 
+/// The board. Shows the live [GameState] from the nearest provider, or —
+/// when [viewState] is given — that (historical) position read-only.
 class ChessBoard extends StatelessWidget {
   final GameService gameService;
 
-  const ChessBoard({super.key, required this.gameService});
+  /// Draw the board from Black's side (a8 bottom-right, h1 top-left).
+  final bool flipped;
+
+  /// A read-only position to show instead of the live game.
+  final GameState? viewState;
+
+  const ChessBoard({
+    super.key,
+    required this.gameService,
+    this.flipped = false,
+    this.viewState,
+  });
+
   @override
   Widget build(BuildContext context) {
+    final settings = context.watch<SettingsController>();
+    final theme = settings.boardTheme;
+
     return Consumer<GameState>(
-      builder: (context, state, child) {
+      builder: (context, live, child) {
+        final state = viewState ?? live;
+        final readOnly = viewState != null;
+        final last = state.moveHistory.isEmpty ? null : state.moveHistory.last;
+        final lastFrom = settings.showLastMove && last != null
+            ? Position.fromAlgebraic(last.substring(0, 2))
+            : null;
+        final lastTo = settings.showLastMove && last != null
+            ? Position.fromAlgebraic(last.substring(2, 4))
+            : null;
+
         return Container(
           decoration: BoxDecoration(
             border: Border.all(color: Colors.grey.shade800, width: 2),
             borderRadius: BorderRadius.circular(8),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 8,
                 offset: const Offset(4, 4),
               ),
@@ -34,86 +63,76 @@ class ChessBoard extends StatelessWidget {
               ),
               itemCount: 64,
               itemBuilder: (context, index) {
-                final row = index ~/ 8;
-                final col = index % 8;
+                final displayRow = index ~/ 8;
+                final displayCol = index % 8;
+                final row = flipped ? 7 - displayRow : displayRow;
+                final col = flipped ? 7 - displayCol : displayCol;
+                final pos = Position(row, col);
                 final isLight = (row + col) % 2 == 0;
                 final piece = state.board[row][col];
 
-                final isSelected =
-                    state.selectedPosition != null &&
-                    state.selectedPosition!.row == row &&
-                    state.selectedPosition!.col == col;
-
-                final isValidMoveTarget = state.validMoves.any(
-                  (pos) => pos.row == row && pos.col == col,
+                final isSelected = !readOnly && state.selectedPosition == pos;
+                final isTarget =
+                    !readOnly &&
+                    settings.showLegalMoves &&
+                    state.validMoves.contains(pos);
+                final isCapture = isTarget && piece != null;
+                final isLastMove = pos == lastFrom || pos == lastTo;
+                final labelColor = theme.labelOn(isLight);
+                final labelStyle = TextStyle(
+                  fontSize: 10,
+                  color: labelColor,
+                  fontWeight: FontWeight.bold,
                 );
 
-                final isCapture = isValidMoveTarget && piece != null;
+                Color color = isLight ? theme.light : theme.dark;
+                if (isLastMove) {
+                  color = Color.alphaBlend(
+                    const Color(0x66F6E05E),
+                    color,
+                  ); // yellow tint
+                }
+                if (isSelected) {
+                  color = Color.alphaBlend(
+                    Colors.blue.withValues(alpha: 0.55),
+                    color,
+                  );
+                } else if (isCapture) {
+                  color = Color.alphaBlend(
+                    Colors.red.withValues(alpha: 0.35),
+                    color,
+                  );
+                }
 
                 return GestureDetector(
-                  onTap: () {
-                    gameService.handleSquareTap(state, row, col);
-                  },
+                  onTap: readOnly
+                      ? null
+                      : () => gameService.handleSquareTap(live, row, col),
                   child: Container(
-                    color: _getSquareColor(
-                      isLight: isLight,
-                      isSelected: isSelected,
-                      isCapture: isCapture,
-                      isValidMoveTarget: isValidMoveTarget,
-                    ),
+                    color: color,
                     child: Stack(
                       children: [
-                        if (isValidMoveTarget && !isSelected)
+                        if (piece != null)
+                          Positioned.fill(
+                            child: PieceImage(
+                              piece: piece,
+                              style: settings.pieceStyle,
+                            ),
+                          ),
+                        if (isTarget && !isSelected)
                           MoveDot(isCapture: isCapture),
-
-                        // Coordinate labels: files on rank 1 (row 7),
-                        // ranks on h-file (col 7).
-                        if (row == 7)
+                        if (settings.showCoordinates && displayRow == 7)
                           Positioned(
                             bottom: 2,
                             left: 4,
-                            child: Text(
-                              String.fromCharCode('a'.codeUnitAt(0) + col),
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: isLight
-                                    ? Colors.brown[800]
-                                    : Colors.brown[100],
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                            child: Text(pos.algebraic[0], style: labelStyle),
                           ),
-
-                        if (col == 7)
+                        if (settings.showCoordinates && displayCol == 7)
                           Positioned(
                             top: 2,
                             right: 4,
-                            child: Text(
-                              '${8 - row}',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: isLight
-                                    ? Colors.brown[800]
-                                    : Colors.brown[100],
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                            child: Text(pos.algebraic[1], style: labelStyle),
                           ),
-
-                        Center(
-                          child: piece != null
-                              ? Image.asset(
-                                  piece.assetPath,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      color: Colors.red,
-                                      child: Text(piece.toCode()),
-                                    );
-                                  },
-                                )
-                              : null,
-                        ),
                       ],
                     ),
                   ),
@@ -124,16 +143,5 @@ class ChessBoard extends StatelessWidget {
         );
       },
     );
-  }
-
-  Color _getSquareColor({
-    required bool isLight,
-    required bool isSelected,
-    required bool isCapture,
-    required bool isValidMoveTarget,
-  }) {
-    if (isSelected) return Colors.blue[400]!.withOpacity(0.7);
-    if (isValidMoveTarget && isCapture) return Colors.red.withOpacity(0.4);
-    return isLight ? Colors.brown[100]! : Colors.brown[700]!;
   }
 }
